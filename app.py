@@ -32,9 +32,9 @@ st.success(f"Welcome {shop_name}! Unlocked!")
 
 # ===== PRODUCTS - Saved in memory =====
 if "products" not in st.session_state:
-   st.session_state.products = []
-st.session_state.prices = []
-st.session_state.stock = []
+    st.session_state.products = []
+    st.session_state.prices = []
+    st.session_state.stock = []
     st.session_state.sales = []
     st.session_state.credits = []
 
