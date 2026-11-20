@@ -24,17 +24,17 @@ st.write(f"Today: {today}")
 
 code = st.text_input("Enter Unlock Code (after you pay):", type="password")
 if code != correct_code:
-    st.warning(f"Shop {shop_id} is locked. Pay K100 to get your code for this month.")
-    st.info("Send K100 to MoMo, send screenshot on WhatsApp, then you will get your code.")
+    st.warning(f"Shop {shop_id} is locked. Pay K50 to get your code for this month.")
+    st.info("Send K50 via MoMo 0778162582, send screenshot on WhatsApp, then you will get your code.")
     st.stop()
 
 st.success(f"Welcome {shop_name}! Unlocked!")
 
 # ===== PRODUCTS - Saved in memory =====
 if "products" not in st.session_state:
-    st.session_state.products = ["Mealie Meal", "Sugar", "Cooking Oil", "Soap"]
-    st.session_state.prices = [150, 80, 120, 35]
-    st.session_state.stock = [10, 10, 10, 10]
+   st.session_state.products = []
+st.session_state.prices = []
+st.session_state.stock = []
     st.session_state.sales = []
     st.session_state.credits = []
 
