@@ -1,160 +1,136 @@
 import streamlit as st
-from datetime import date
+import pandas as pd
+from datetime import datetime
+from streamlit_gsheets import GSheetsConnection
+import re
 
-st.set_page_config(page_title="Shop Management System", page_icon="🛒")
-st.title("🛒 Shop Management System")
+st.set_page_config(page_title="AWH Shop App", page_icon="🛒")
+conn = st.connection("gsheets", type=GSheetsConnection)
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1-Aigc_yDYS26ApGo1QrqmBbQVIgjLGOIMKObaq6IWDg/edit?usp=drivesdk"
 
-# ===== SHOP SETTINGS - GENERAL =====
-shop_id = st.number_input("What is your Shop Number?", min_value=1, max_value=100, step=1)
-shop_name = st.text_input("What is your Shop Name? e.g. Mary's Shop")
+def load_stock():
+    try:
+        df = conn.read(spreadsheet=SHEET_URL, worksheet="Stock", ttl=0)
+        return df.dropna(how="all")
+    except:
+        return pd.DataFrame(columns=["Shop","Product","Price","Quantity"])
+def load_sales():
+    try:
+        df = conn.read(spreadsheet=SHEET_URL, worksheet="Sales", ttl=0)
+        return df.dropna(how="all")
+    except:
+        return pd.DataFrame(columns=["Shop","Product","Quantity","Total","Date"])
+def save_stock(df):
+    conn.update(spreadsheet=SHEET_URL, worksheet="Stock", data=df)
+def save_sales(df):
+    conn.update(spreadsheet=SHEET_URL, worksheet="Sales", data=df)
 
-today = date.today()
+def get_shop_number(shop_text):
+    nums = re.findall(r'\d+', str(shop_text))
+    return int(nums[0]) if nums else 1
 
-# ===== UNLOCK CODE - NEW FORMULA WITH YEAR =====
-# Formula: SHOP x MONTH + (YEAR - 2020) + 7
-correct_number = shop_id * today.month + (today.year - 2020) + 7
-correct_code = f"SHOP-{correct_number}"
+def get_expected_code(shop_text):
+    now = datetime.now()
+    month = now.month
+    year = now.year
+    shop_num = get_shop_number(shop_text)
+    code_num = shop_num * month + (year - 2020) + 7
+    return f"SHOP-{code_num}"
 
-if not shop_name:
-    st.info("Please enter your Shop Name and Shop Number above.")
-    st.stop()
+st.title("🛒 Online Shop Management")
+shop = st.text_input("Enter Your Shop Number:", value="Shop 1")
+code = st.text_input("Enter Unlock Code:", type="password")
 
-st.write(f"Welcome to **{shop_name}** - Shop {shop_id}")
-st.write(f"Today: {today}")
+if code == "FREE-NOV":
+    pass
+else:
+    expected = get_expected_code(shop)
+    if code != expected:
+        st.warning("Shop is locked. Pay K50 to get your code. MoMo: 0778162582")
+        st.info("Ask Hamainza for this month's code. Do NOT share your code.")
+        st.stop()
 
-code = st.text_input("Enter Unlock Code (after you pay):", type="password")
-if code != correct_code:
-    st.warning(f"Shop {shop_id} is locked. Pay K50 to get your code for this month.")
-    st.info("Send K50 via MoMo 0778162582, send screenshot on WhatsApp, then you will get your code.")
-    st.stop()
+st.success(f"Welcome! to your ! {shop} shop Management system!")
+stock_df = load_stock()
+sales_df = load_sales()
+my_stock = stock_df[stock_df["Shop"] == shop] if not stock_df.empty else pd.DataFrame(columns=["Shop","Product","Price","Quantity"])
+my_sales = sales_df[sales_df["Shop"] == shop] if not sales_df.empty else pd.DataFrame(columns=["Shop","Product","Quantity","Total","Date"])
 
-st.success(f"Welcome {shop_name}! Unlocked!")
+choice = st.selectbox("Choose:", ["See Stock", "Add New Product", "Sell to a Customer", "Remove / Edit Product", "See My Sales"])
 
-# ===== PRODUCTS - Saved in memory =====
-if "products" not in st.session_state:
-    st.session_state.products = []
-    st.session_state.prices = []
-    st.session_state.stock = []
-    st.session_state.sales = []
-    st.session_state.credits = []
+if choice == "See Stock":
+    st.subheader("Stock")
+    if my_stock.empty:
+        st.write("No stock yet. Add a product.")
+    else:
+        st.dataframe(my_stock[["Product","Price","Quantity"]], use_container_width=True)
 
-products = st.session_state.products
-prices = st.session_state.prices
-stock = st.session_state.stock
-
-# ===== MENU - NOW WITH 3 NEW OPTIONS =====
-menu = st.selectbox("Choose:", ["Sell to a Customer", "Add New Product", "See Stock", "See All Customer Sales", "See Today's Summary", "Low Stock Alert", "Credit Book - People Who Owe Me"])
-
-if menu == "Add New Product":
+if choice == "Add New Product":
     st.subheader("Add New Product")
     name = st.text_input("Product Name:")
-    price = st.number_input("Price (K):", min_value=1, step=1)
-    qty = st.number_input("How many in stock?", min_value=0, step=1)
+    price = st.number_input("Price (K):", min_value=0, value=0)
+    qty = st.number_input("How many in stock?", min_value=0, value=0)
     if st.button("Add Product"):
         if name:
-            products.append(name)
-            prices.append(price)
-            stock.append(qty)
-            st.success(f"{name} added!")
+            new_row = pd.DataFrame([{"Shop": shop, "Product": name, "Price": price, "Quantity": qty}])
+            updated = pd.concat([stock_df, new_row], ignore_index=True)
+            save_stock(updated)
+            st.success(f"{name} added! Saved in Google Sheets forever.")
+            st.rerun()
         else:
-            st.error("Enter product name!")
+            st.error("Type product name first")
 
-elif menu == "Sell to a Customer":
+if choice == "Sell to a Customer":
     st.subheader("Sell to a Customer")
-    customer = st.text_input("Customer Name?")
-    total = 0
-    quantities = []
-    for i in range(len(products)):
-        st.write(f"**{products[i]}** - Stock: {stock[i]} - K{prices[i]}")
-        if stock[i] == 0:
-            st.error("OUT OF STOCK!")
-            quantities.append(0)
-            continue
-        if stock[i] < 3:
-            st.warning("LOW STOCK!")
-        q = st.number_input(f"How many {products[i]} did {customer} buy?", min_value=0, max_value=stock[i], step=1, key=f"q{i}")
-        quantities.append(q)
-        total += q * prices[i]
-
-    st.write(f"### Total for {customer}: K{total}")
-    if st.button("Save Receipt"):
-        for i in range(len(products)):
-            stock[i] -= quantities[i]
-        # Save as dict so Today's Summary can work
-        st.session_state.sales.append({"date": str(today), "customer": customer, "total": total})
-        st.success(f"Receipt for {customer} saved!")
-
-elif menu == "See Stock":
-    st.subheader("Stock")
-    for i in range(len(products)):
-        st.write(f"{products[i]}: {stock[i]} left - K{prices[i]}")
-        if stock[i] == 0:
-            st.error("OUT OF STOCK!")
-        elif stock[i] < 3:
-            st.warning("LOW STOCK!")
-
-elif menu == "See All Customer Sales":
-    st.subheader("All Customer Sales")
-    if len(st.session_state.sales) == 0:
-        st.write("No sales yet!")
+    if my_stock.empty:
+        st.write("No stock to sell. Add stock first.")
     else:
-        for s in st.session_state.sales:
-            if isinstance(s, dict):
-                st.write(f"{s['date']} - {s['customer']}, Total: K{s['total']}")
-            else:
-                st.write(s)
+        prod = st.selectbox("Choose Product:", my_stock["Product"].tolist())
+        prod_row = my_stock[my_stock["Product"] == prod].iloc[0]
+        st.write(f"Price: K{prod_row['Price']} | In Stock: {prod_row['Quantity']}")
+        sell_qty = st.number_input("How many to sell?", min_value=1, max_value=int(prod_row['Quantity']), value=1)
+        total = float(prod_row['Price']) * sell_qty
+        st.subheader(f"Total: K{total}")
+        if st.button("Complete Sale"):
+            idx = stock_df[(stock_df["Shop"]==shop) & (stock_df["Product"]==prod)].index[0]
+            stock_df.at[idx, "Quantity"] = int(stock_df.at[idx, "Quantity"]) - sell_qty
+            save_stock(stock_df)
+            new_sale = pd.DataFrame([{"Shop": shop, "Product": prod, "Quantity": sell_qty, "Total": total, "Date": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")}])
+            updated_sales = pd.concat([sales_df, new_sale], ignore_index=True)
+            save_sales(updated_sales)
+            st.success(f"Sold! K{total} saved.")
+            st.rerun()
 
-elif menu == "See Today's Summary":
-    st.subheader(f"Today's Summary - {today}")
-    todays_sales = [s for s in st.session_state.sales if isinstance(s, dict) and s["date"] == str(today)]
-    if len(todays_sales) == 0:
-        st.write("No sales today yet!")
+if choice == "Remove / Edit Product":
+    st.subheader("Remove / Edit Product")
+    if my_stock.empty:
+        st.write("No stock to remove.")
     else:
-        total_today = sum(s["total"] for s in todays_sales)
-        st.success(f"Today you made: **K{total_today}**")
-        st.write(f"Number of customers today: **{len(todays_sales)}**")
-        st.write("---")
-        for s in todays_sales:
-            st.write(f"{s['customer']} - K{s['total']}")
-
-elif menu == "Low Stock Alert":
-    st.subheader("⚠️ Low Stock Alert - Buy These Today!")
-    low = []
-    for i in range(len(products)):
-        if stock[i] < 3:
-            low.append(i)
-    if len(low) == 0:
-        st.success("All stock is OK! Nothing is low.")
-    else:
-        for i in low:
-            if stock[i] == 0:
-                st.error(f"{products[i]}: 0 left - OUT OF STOCK! Buy now!")
-            else:
-                st.warning(f"{products[i]}: Only {stock[i]} left - K{prices[i]} each")
-
-elif menu == "Credit Book - People Who Owe Me":
-    st.subheader("📒 Credit Book - People Who Owe Me")
-    # Add new credit
-    st.write("**Add someone who took on credit:**")
-    c_name = st.text_input("Customer Name who owes?")
-    c_item = st.text_input("What did they take? e.g. 1 Soap")
-    c_amount = st.number_input("How much do they owe? (K):", min_value=1, step=1)
-    if st.button("Add to Credit Book"):
-        if c_name and c_item:
-            st.session_state.credits.append({"date": str(today), "customer": c_name, "item": c_item, "amount": c_amount})
-            st.success(f"{c_name} owes K{c_amount} for {c_item}")
-        else:
-            st.error("Enter name and item!")
-
-    st.write("---")
-    st.write("**People who still owe you:**")
-    if len(st.session_state.credits) == 0:
-        st.write("Nobody owes you. Good!")
-    else:
-        total_owed = sum(c["amount"] for c in st.session_state.credits)
-        st.error(f"Total owed to you: **K{total_owed}**")
-        for idx, c in enumerate(st.session_state.credits):
-            st.write(f"{c['date']} - {c['customer']} - {c['item']} - Owes K{c['amount']}")
-            if st.button(f"Paid - Remove {c['customer']}", key=f"paid{idx}"):
-                st.session_state.credits.pop(idx)
+        prod = st.selectbox("Choose Product to Remove/Edit:", my_stock["Product"].tolist())
+        prod_row = my_stock[my_stock["Product"] == prod].iloc[0]
+        st.write(f"Now: Price K{prod_row['Price']} | Qty: {prod_row['Quantity']}")
+        new_price = st.number_input("New Price (K):", min_value=0, value=int(prod_row['Price']))
+        new_qty = st.number_input("New Quantity:", min_value=0, value=int(prod_row['Quantity']))
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Update Product"):
+                idx = stock_df[(stock_df["Shop"]==shop) & (stock_df["Product"]==prod)].index[0]
+                stock_df.at[idx, "Price"] = new_price
+                stock_df.at[idx, "Quantity"] = new_qty
+                save_stock(stock_df)
+                st.success(f"{prod} updated!")
                 st.rerun()
+        with col2:
+            if st.button("DELETE Product ❌"):
+                updated = stock_df[~((stock_df["Shop"]==shop) & (stock_df["Product"]==prod))]
+                save_stock(updated)
+                st.success(f"{prod} deleted from Google Sheets!")
+                st.rerun()
+
+if choice == "See My Sales":
+    st.subheader("My Sales - Forever Saved")
+    if my_sales.empty:
+        st.write("No sales yet.")
+    else:
+        st.dataframe(my_sales, use_container_width=True)
+        st.subheader(f"Total Sales: K{my_sales['Total'].sum()}")
