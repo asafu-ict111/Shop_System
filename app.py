@@ -4,7 +4,7 @@ from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
 import re
 
-st.set_page_config(page_title="AWH Shop App", page_icon="🛒")
+st.set_page_config(page_title="Online Shop Management System", page_icon="🛒")
 conn = st.connection("gsheets", type=GSheetsConnection)
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1-Aigc_yDYS26ApGo1QrqmBbQVIgjLGOIMKObaq6IWDg/edit?usp=drivesdk"
 
@@ -37,7 +37,7 @@ def get_expected_code(shop_text):
     code_num = shop_num * month + (year - 2020) + 7
     return f"SHOP-{code_num}"
 
-st.title("🛒 Online Shop Management")
+st.title("🛒 Online Shop Management System")
 shop = st.text_input("Enter Your Shop Number:", value="Shop 1")
 code = st.text_input("Enter Unlock Code:", type="password")
 
@@ -46,11 +46,11 @@ if code == "FREE-NOV":
 else:
     expected = get_expected_code(shop)
     if code != expected:
-        st.warning("Shop is locked. Pay K50 to get your code. MoMo: 0778162582")
+        st.warning("App is locked. Pay K50 to get your code. MoMo: 0778162582")
         st.info("Ask Hamainza for this month's code. Do NOT share your code.")
         st.stop()
 
-st.success(f"Welcome! to your ! {shop} shop Management system!")
+st.success(f"Welcome! to your {shop} shop Management system!")
 stock_df = load_stock()
 sales_df = load_sales()
 my_stock = stock_df[stock_df["Shop"] == shop] if not stock_df.empty else pd.DataFrame(columns=["Shop","Product","Price","Quantity"])
