@@ -11,10 +11,6 @@ PAY_NUMBER = "0778162582"
 PAY_NAME = "Hamainza"
 PAY_AMOUNT = 15
 
-# --- SAVED FORMULA ---
-# DEC 2026: SHOP x 12 + 6 + 7
-# JAN 2027: SHOP x 1 + 7 + 7
-# NOV 2026: NOV-FREE
 def expected_code(shop_number, year, month):
     if year == 2026 and month == 12:
         return f"SHOP-{shop_number * 12 + 6 + 7}"
@@ -46,7 +42,6 @@ def show_media(link):
         st.image(direct, use_container_width=True)
 
 def show_stars(avg):
-    # avg 0-5
     full = int(round(avg))
     return "⭐" * full + "☆" * (5 - full) + f" {avg:.1f}"
 
@@ -59,13 +54,17 @@ if "shop_number" not in st.session_state:
 if "shop_name" not in st.session_state:
     st.session_state.shop_name = None
 if "ratings" not in st.session_state:
-    st.session_state.ratings = {}  # product_name -> list of stars
+    st.session_state.ratings = {}
+if "daily_book" not in st.session_state:
+    st.session_state.daily_book = []
+if "shop_profile_pic" not in st.session_state:
+    st.session_state.shop_profile_pic = ""
+if "all_shop_pics" not in st.session_state:
+    st.session_state.all_shop_pics = {}  # shop_name -> pic link
 
-# --- TITLE ALWAYS ---
 st.title("🛒 Online Shopping")
 st.subheader("Online Shop Management System")
 
-# --- 1. LOGIN ---
 if st.session_state.role is None:
     st.write("Who are you?")
     if st.button("👤 I'M A CUSTOMER - FREE", use_container_width=True):
@@ -78,7 +77,6 @@ if st.session_state.role is None:
     st.caption("Customers shop FREE. Businessmen pay K15 to sell.")
     st.stop()
 
-# --- 2. BUSINESSMAN PAY ---
 if st.session_state.role == "businessman_check":
     st.title("💼 Businessman Access")
     now = datetime.now()
@@ -104,17 +102,25 @@ if st.session_state.role == "businessman_check":
         st.rerun()
     st.stop()
 
-# --- 3. SHOP MANAGER - BUSINESS ONLY ---
+# --- SHOP MANAGER + PROFILE PICTURE ---
 if st.session_state.role == "shop_setup":
     st.title("🛒 Shop Manager System")
     st.write(f"Your Shop Number is: {st.session_state.shop_number}")
     shop_name = st.text_input("What is your Shop Name? e.g. Mary's Shop")
+    st.write("📸 Your Profile Picture / Shop Logo:")
+    st.caption("Go to Drive > Your photo > Share > Anyone with link > Copy link > Paste here")
+    profile_link = st.text_input("Paste Google Drive link for your Profile Picture here:")
+    if profile_link:
+        st.write("Preview:")
+        show_media(profile_link)
     if shop_name.strip() == "":
         st.info("Please enter your Shop Name above.")
     else:
         st.success(f"Welcome {shop_name} - Shop {st.session_state.shop_number}!")
         if st.button("✅ Enter My Shop", use_container_width=True):
             st.session_state.shop_name = shop_name
+            st.session_state.shop_profile_pic = profile_link
+            st.session_state.all_shop_pics[shop_name] = profile_link
             st.session_state.role = "businessman"
             st.rerun()
     if st.button("⬅ Back"):
@@ -122,18 +128,15 @@ if st.session_state.role == "shop_setup":
         st.rerun()
     st.stop()
 
-# --- 4. LOGOUT BUTTON ---
 if st.button("⬅ Change Login / Logout"):
     st.session_state.role = None
     st.session_state.shop_name = None
     st.rerun()
 
-# ================= CUSTOMER ONLY VIEW =================
+# ============ CUSTOMER ONLY ============
 if st.session_state.role == "customer":
     st.success("👤 Customer Mode - FREE Shopping")
     st.header("🛍️ Shop Now")
-
-    # Show my products + sheet products - CUSTOMER ONLY sees shopping
     all_products = []
     for p in st.session_state.my_products:
         all_products.append(p)
@@ -151,21 +154,27 @@ if st.session_state.role == "customer":
             })
     except:
         st.error("Could not load Sheet.")
-
     for p in all_products:
         pname = str(p["Product"])
         st.divider()
+        # Show Shop Profile Pic for this product if we have it
+        shop_pic = st.session_state.all_shop_pics.get(str(p["Shop"]), "")
+        if shop_pic:
+            c_pic, c_info = st.columns([1, 3])
+            with c_pic:
+                show_media(shop_pic)
+            with c_info:
+                st.write(f"Shop: **{p['Shop']}**")
+                st.write("✅ Verified Businessman")
         show_media(p.get("Image",""))
         st.subheader(f"{pname} - K{p['Price']}")
         st.write(f"Shop: {p['Shop']} | Stock: {p['Stock']}")
-        # --- STARS ---
         ratings_list = st.session_state.ratings.get(pname, [])
         if ratings_list:
             avg = sum(ratings_list) / len(ratings_list)
             st.write(f"Rating: {show_stars(avg)} ({len(ratings_list)} ratings)")
         else:
             st.write("Rating: ☆☆☆☆☆ No ratings yet - Be first to rate!")
-        # --- BUY ---
         qty = st.number_input(f"How many {pname} do you want?", min_value=1, value=1, key=f"qty_cust_{pname}")
         try:
             total = float(p["Price"]) * qty
@@ -180,7 +189,6 @@ if st.session_state.role == "customer":
                 st.link_button("💬 WhatsApp Chat", f"https://wa.me/{ph}?text=Hi, I want {pname}")
             with c2:
                 st.link_button("📞 Call Shop", f"tel:{ph}")
-        # --- RATE ---
         st.write("Rate this product:")
         stars = st.selectbox(f"Your rating for {pname}:", [5,4,3,2,1], format_func=lambda x: "⭐"*x, key=f"rate_{pname}")
         if st.button(f"⭐ Submit Rating", key=f"submit_rate_{pname}"):
@@ -191,10 +199,37 @@ if st.session_state.role == "customer":
             st.rerun()
     st.stop()
 
-# ================= BUSINESSMAN ONLY VIEW =================
+# ============ BUSINESSMAN ONLY ============
 if st.session_state.role == "businessman":
-    st.success(f"💼 {st.session_state.shop_name} - Shop {st.session_state.shop_number} - Business Mode")
-    choice = st.selectbox("Choose:", ["View Market", "Add New Product", "My Products"])
+    # Show Profile Pic at top
+    if st.session_state.shop_profile_pic:
+        col_p, col_t = st.columns([1, 3])
+        with col_p:
+            show_media(st.session_state.shop_profile_pic)
+        with col_t:
+            st.success(f"💼 {st.session_state.shop_name} - Shop {st.session_state.shop_number}")
+            st.write("Business Mode - Your Profile Picture is showing")
+    else:
+        st.success(f"💼 {st.session_state.shop_name} - Shop {st.session_state.shop_number} - Business Mode")
+        st.caption("No profile picture yet - Go to My Profile to add one")
+
+    choice = st.selectbox("Choose:", ["View Market", "Add New Product", "My Products", "📓 Daily Business Routine", "📊 Monthly Review", "👤 My Profile"])
+
+    if choice == "👤 My Profile":
+        st.header("👤 My Profile - Change Profile Picture")
+        st.write(f"Shop: {st.session_state.shop_name} - Shop {st.session_state.shop_number}")
+        if st.session_state.shop_profile_pic:
+            st.write("Current Picture:")
+            show_media(st.session_state.shop_profile_pic)
+        new_pic = st.text_input("Paste NEW Google Drive link for Profile Picture:")
+        if new_pic:
+            st.write("Preview new picture:")
+            show_media(new_pic)
+        if st.button("💾 Save Profile Picture", use_container_width=True):
+            st.session_state.shop_profile_pic = new_pic
+            st.session_state.all_shop_pics[st.session_state.shop_name] = new_pic
+            st.success("Profile Picture saved!")
+            st.rerun()
 
     if choice == "Add New Product":
         st.header("Add New Product")
@@ -203,7 +238,6 @@ if st.session_state.role == "businessman":
         stock = st.number_input("How many in stock?", min_value=0, value=0)
         phone = st.text_input("Phone (e.g 260770000000):")
         st.write("📸🎥 Paste Drive link for Photo or Video:")
-        st.caption("Drive > Photo/Video > Share > Anyone with link > Copy link > Paste here")
         drive_link = st.text_input("Paste Google Drive link for Photo or Video here:")
         media_type = st.selectbox("Is this a Photo or Video?", ["Photo", "Video"])
         if st.button("Add Product"):
@@ -260,3 +294,62 @@ if st.session_state.role == "businessman":
                     st.write("Rating: No ratings yet")
         except:
             st.error("Could not load Sheet.")
+
+    if choice == "📓 Daily Business Routine":
+        st.header("📓 Daily Business Routine")
+        st.write(f"Shop: {st.session_state.shop_name} - Shop {st.session_state.shop_number}")
+        st.write("Save what happened today. Customer CANNOT see this, only you.")
+        date_pick = st.date_input("Date:", value=datetime.now().date())
+        item_sold = st.text_input("What did you sell today? e.g. Soya chunks, Smart shoe")
+        sales = st.number_input("Money IN - Sales today (K):", min_value=0, value=0)
+        expenses = st.number_input("Money OUT - Expenses today (K): e.g. transport, stock", min_value=0, value=0)
+        note = st.text_area("Note / Routine: e.g. Bought 10 bags, Paid rent, Customer ordered 5 shoes")
+        if st.button("💾 Save Today's Routine", use_container_width=True):
+            st.session_state.daily_book.append({
+                "date": str(date_pick),
+                "shop": st.session_state.shop_name,
+                "shop_number": st.session_state.shop_number,
+                "item": item_sold,
+                "sales": sales,
+                "expenses": expenses,
+                "profit": sales - expenses,
+                "note": note
+            })
+            st.success(f"Saved! {date_pick} - Profit: K{sales - expenses}")
+            st.rerun()
+        st.divider()
+        st.subheader("My Saved Days - Latest First")
+        my_days = [d for d in st.session_state.daily_book if d["shop_number"] == st.session_state.shop_number]
+        if not my_days:
+            st.write("No days saved yet. Save today above.")
+        for d in reversed(my_days):
+            st.write(f"**{d['date']}** - {d['item']}")
+            st.write(f"Sales: K{d['sales']} | Expenses: K{d['expenses']} | Profit: **K{d['profit']}**")
+            if d['note']:
+                st.write(f"Note: {d['note']}")
+            st.write("---")
+
+    if choice == "📊 Monthly Review":
+        st.header("📊 Monthly Review")
+        st.write(f"Shop: {st.session_state.shop_name}")
+        month_pick = st.selectbox("Which Month?", ["2026-11", "2026-12", "2027-01", "2027-02", "2027-03"])
+        my_days = [d for d in st.session_state.daily_book if d["shop_number"] == st.session_state.shop_number and str(d["date"]).startswith(month_pick)]
+        total_sales = sum(d["sales"] for d in my_days)
+        total_exp = sum(d["expenses"] for d in my_days)
+        total_profit = total_sales - total_exp
+        st.divider()
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Total Sales", f"K{total_sales}")
+        with c2:
+            st.metric("Total Expenses", f"K{total_exp}")
+        with c3:
+            st.metric("Total Profit", f"K{total_profit}")
+        st.write(f"Days saved in {month_pick}: **{len(my_days)} days**")
+        if not my_days:
+            st.info("No routine saved for this month yet. Go to Daily Business Routine and save.")
+        for d in my_days:
+            st.write(f"**{d['date']}** - {d['item']} | Sales K{d['sales']} | Expenses K{d['expenses']} | Profit K{d['profit']}")
+            if d['note']:
+                st.write(f"Note: {d['note']}")
+ 
