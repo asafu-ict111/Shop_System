@@ -1,53 +1,262 @@
 import streamlit as st
-import pandas as pd, re, urllib.parse
+import pandas as pd
+from datetime import datetime
+import re
+
+st.set_page_config(page_title="Online Shopping", page_icon="🛒")
 
 SHEET_ID = "1-Aigc_yDYS26ApGo1QrqmBbQVIgjLGOIMKObaq6IWDg"
-BASE = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet="
-def load(s):
-    try: return pd.read_csv(BASE+s)
-    except: return pd.DataFrame()
-def fix_drive(link):
-    if not isinstance(link,str): return ""
-    m=re.search(r"/d/([a-zA-Z0-9_-]+)",link)
-    if m: return f"https://drive.google.com/uc?export=view&id={m.group(1)}"
+SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Stock"
+PAY_NUMBER = "0778162582"
+PAY_NAME = "Hamainza"
+PAY_AMOUNT = 15
+
+# --- SAVED FORMULA ---
+# DEC 2026: SHOP x 12 + 6 + 7
+# JAN 2027: SHOP x 1 + 7 + 7
+# NOV 2026: NOV-FREE
+def expected_code(shop_number, year, month):
+    if year == 2026 and month == 12:
+        return f"SHOP-{shop_number * 12 + 6 + 7}"
+    if year == 2027 and month == 1:
+        return f"SHOP-{shop_number * 1 + 7 + 7}"
+    if year == 2026 and month == 11:
+        return "NOV-FREE"
+    return f"SHOP-{shop_number * 1 + 7 + 7}"
+
+def drive_to_direct(link):
+    if not link or str(link) == "nan":
+        return ""
+    link = str(link).strip()
+    m = re.search(r"/d/([a-zA-Z0-9_-]+)", link)
+    if m:
+        return f"https://drive.google.com/uc?export=view&id={m.group(1)}"
+    m2 = re.search(r"id=([a-zA-Z0-9_-]+)", link)
+    if m2:
+        return f"https://drive.google.com/uc?export=view&id={m2.group(1)}"
     return link
 
-st.set_page_config(page_title="Zambia Market", layout="wide")
-st.title("🇿🇲 Zambia Market")
-st.caption("🔒 Private: Chats & Voice Notes are NOT saved in our app. They go straight to WhatsApp.")
+def show_media(link):
+    direct = drive_to_direct(link)
+    if not direct:
+        return
+    if any(x in direct.lower() for x in [".mp4", ".mov", ".webm", "video"]):
+        st.video(direct)
+    else:
+        st.image(direct, use_container_width=True)
 
-stock = load("Stock")
-reviews = load("Reviews")
+def show_stars(avg):
+    # avg 0-5
+    full = int(round(avg))
+    return "⭐" * full + "☆" * (5 - full) + f" {avg:.1f}"
 
-for _, row in stock.fillna("").iterrows():
-    with st.container(border=True):
-        st.subheader(f"{row.get('Product','')} - K{row.get('Price','')}")
-        st.caption(f"Shop: {row.get('Shop','')} | Stock: {row.get('Quantity','')}")
-        photo = fix_drive(row.get('Photo',''))
-        if photo: st.image(photo, use_container_width=True)
-        video = fix_drive(row.get('Video',''))
-        if video: st.video(video)
+if "role" not in st.session_state:
+    st.session_state.role = None
+if "my_products" not in st.session_state:
+    st.session_state.my_products = []
+if "shop_number" not in st.session_state:
+    st.session_state.shop_number = None
+if "shop_name" not in st.session_state:
+    st.session_state.shop_name = None
+if "ratings" not in st.session_state:
+    st.session_state.ratings = {}  # product_name -> list of stars
 
-        # Show Reviews
-        if not reviews.empty:
-            r = reviews[(reviews['Product']==row.get('Product')) & (reviews['Shop']==row.get('Shop'))]
-            if not r.empty:
-                st.write(f"⭐ {r['Stars'].mean():.1f} ({len(r)} reviews) ❤️ {len(r)*3} likes")
-                for _, rv in r.tail(3).iterrows():
-                    st.write(f"**{rv.get('Name','Customer')}**: {rv.get('Comment','')} - {rv.get('Stars','')}⭐")
+# --- TITLE ALWAYS ---
+st.title("🛒 Online Shopping")
+st.subheader("Online Shop Management System")
 
-        phone = str(row.get('Phone','')).replace(" ","").replace("+","")
-        msg = urllib.parse.quote(f"Hi {row.get('Shop','')}, I want {row.get('Product','')}")
-        c1,c2,c3 = st.columns(3)
-        with c1: st.link_button("💬 WhatsApp Chat", f"https://wa.me/{phone}?text={msg}")
-        with c2: st.link_button("🎤 Voice Note on WhatsApp", f"https://wa.me/{phone}?text={msg} - I want to send a voice note")
-        with c3: st.link_button("📞 Call Shop", f"tel:+{phone}")
-        
-        st.info("💡 For Voice Note: Tap WhatsApp -> Hold 🎤 mic button in WhatsApp to record. We don't save it, only you and shop hear it.")
-        
-        with st.expander("⭐ Leave Review (Public, No Phone Saved)"):
-            name = st.text_input("Your Name (optional)", key=f"n_{row.get('Product')}_{row.get('Shop')}")
-            stars = st.select_slider("Stars", [1,2,3,4,5], value=5, key=f"s_{row.get('Product')}_{row.get('Shop')}")
-            comment = st.text_area("Comment", key=f"c_{row.get('Product')}_{row.get('Shop')}")
-            if st.button("Post Review", key=f"rev_{row.get('Product')}_{row.get('Shop')}"):
-                st.success("Review saved! Only your Name, Stars & Comment are saved. No phone, no private chat.")
+# --- 1. LOGIN ---
+if st.session_state.role is None:
+    st.write("Who are you?")
+    if st.button("👤 I'M A CUSTOMER - FREE", use_container_width=True):
+        st.session_state.role = "customer"
+        st.rerun()
+    st.write("")
+    if st.button("💼 I'M A BUSINESSMAN - K15 / Month", use_container_width=True):
+        st.session_state.role = "businessman_check"
+        st.rerun()
+    st.caption("Customers shop FREE. Businessmen pay K15 to sell.")
+    st.stop()
+
+# --- 2. BUSINESSMAN PAY ---
+if st.session_state.role == "businessman_check":
+    st.title("💼 Businessman Access")
+    now = datetime.now()
+    month_name = now.strftime("%B %Y")
+    if now.year == 2026 and now.month == 11:
+        st.success("🎉 NOVEMBER PROMO - FREE THIS MONTH!")
+        st.info(f"1. Send K0 to {PAY_NUMBER} - {PAY_NAME}")
+    else:
+        st.info(f"1. Send **K{PAY_AMOUNT}** to **{PAY_NUMBER} - {PAY_NAME}**")
+        st.write(f"2. You will receive this month's code for {month_name}")
+    shop_num_input = st.number_input("What is your Shop Number?", min_value=1, value=1)
+    code = st.text_input("Enter this month's code:")
+    if st.button("✅ ENTER WITH CODE", use_container_width=True):
+        correct = expected_code(int(shop_num_input), now.year, now.month)
+        if code.strip().upper() == correct:
+            st.session_state.shop_number = int(shop_num_input)
+            st.session_state.role = "shop_setup"
+            st.rerun()
+        else:
+            st.error("Wrong code. Pay K15 first, then enter code Hamainza sent you.")
+    if st.button("⬅ Back"):
+        st.session_state.role = None
+        st.rerun()
+    st.stop()
+
+# --- 3. SHOP MANAGER - BUSINESS ONLY ---
+if st.session_state.role == "shop_setup":
+    st.title("🛒 Shop Manager System")
+    st.write(f"Your Shop Number is: {st.session_state.shop_number}")
+    shop_name = st.text_input("What is your Shop Name? e.g. Mary's Shop")
+    if shop_name.strip() == "":
+        st.info("Please enter your Shop Name above.")
+    else:
+        st.success(f"Welcome {shop_name} - Shop {st.session_state.shop_number}!")
+        if st.button("✅ Enter My Shop", use_container_width=True):
+            st.session_state.shop_name = shop_name
+            st.session_state.role = "businessman"
+            st.rerun()
+    if st.button("⬅ Back"):
+        st.session_state.role = None
+        st.rerun()
+    st.stop()
+
+# --- 4. LOGOUT BUTTON ---
+if st.button("⬅ Change Login / Logout"):
+    st.session_state.role = None
+    st.session_state.shop_name = None
+    st.rerun()
+
+# ================= CUSTOMER ONLY VIEW =================
+if st.session_state.role == "customer":
+    st.success("👤 Customer Mode - FREE Shopping")
+    st.header("🛍️ Shop Now")
+
+    # Show my products + sheet products - CUSTOMER ONLY sees shopping
+    all_products = []
+    for p in st.session_state.my_products:
+        all_products.append(p)
+    try:
+        df = pd.read_csv(SHEET_URL)
+        df.columns = [c.strip() for c in df.columns]
+        for idx, row in df.iterrows():
+            all_products.append({
+                "Product": row.get("Product","Product"),
+                "Price": row.get("Price",0),
+                "Stock": row.get("Stock",""),
+                "Shop": row.get("Shop","Shop 1"),
+                "Phone": str(row.get("Phone","")).replace(".0","").strip(),
+                "Image": row.get("Image","")
+            })
+    except:
+        st.error("Could not load Sheet.")
+
+    for p in all_products:
+        pname = str(p["Product"])
+        st.divider()
+        show_media(p.get("Image",""))
+        st.subheader(f"{pname} - K{p['Price']}")
+        st.write(f"Shop: {p['Shop']} | Stock: {p['Stock']}")
+        # --- STARS ---
+        ratings_list = st.session_state.ratings.get(pname, [])
+        if ratings_list:
+            avg = sum(ratings_list) / len(ratings_list)
+            st.write(f"Rating: {show_stars(avg)} ({len(ratings_list)} ratings)")
+        else:
+            st.write("Rating: ☆☆☆☆☆ No ratings yet - Be first to rate!")
+        # --- BUY ---
+        qty = st.number_input(f"How many {pname} do you want?", min_value=1, value=1, key=f"qty_cust_{pname}")
+        try:
+            total = float(p["Price"]) * qty
+        except:
+            total = 0
+        st.write(f"Total: **K{total}**")
+        ph = str(p.get("Phone","")).strip()
+        if ph and ph != "nan":
+            st.link_button(f"🛒 BUY NOW - K{total} on WhatsApp", f"https://wa.me/{ph}?text=Hi {p['Shop']}, I want to BUY {qty} x {pname} = K{total}. My name is: ", key=f"buy_{pname}")
+            c1, c2 = st.columns(2)
+            with c1:
+                st.link_button("💬 WhatsApp Chat", f"https://wa.me/{ph}?text=Hi, I want {pname}")
+            with c2:
+                st.link_button("📞 Call Shop", f"tel:{ph}")
+        # --- RATE ---
+        st.write("Rate this product:")
+        stars = st.selectbox(f"Your rating for {pname}:", [5,4,3,2,1], format_func=lambda x: "⭐"*x, key=f"rate_{pname}")
+        if st.button(f"⭐ Submit Rating", key=f"submit_rate_{pname}"):
+            if pname not in st.session_state.ratings:
+                st.session_state.ratings[pname] = []
+            st.session_state.ratings[pname].append(stars)
+            st.success(f"Thanks! You rated {pname} {stars} stars")
+            st.rerun()
+    st.stop()
+
+# ================= BUSINESSMAN ONLY VIEW =================
+if st.session_state.role == "businessman":
+    st.success(f"💼 {st.session_state.shop_name} - Shop {st.session_state.shop_number} - Business Mode")
+    choice = st.selectbox("Choose:", ["View Market", "Add New Product", "My Products"])
+
+    if choice == "Add New Product":
+        st.header("Add New Product")
+        name = st.text_input("Product Name:")
+        price = st.number_input("Price (K):", min_value=0, value=0)
+        stock = st.number_input("How many in stock?", min_value=0, value=0)
+        phone = st.text_input("Phone (e.g 260770000000):")
+        st.write("📸🎥 Paste Drive link for Photo or Video:")
+        st.caption("Drive > Photo/Video > Share > Anyone with link > Copy link > Paste here")
+        drive_link = st.text_input("Paste Google Drive link for Photo or Video here:")
+        media_type = st.selectbox("Is this a Photo or Video?", ["Photo", "Video"])
+        if st.button("Add Product"):
+            if name and price > 0:
+                st.session_state.my_products.append({
+                    "Product": name, "Price": price, "Stock": stock,
+                    "Shop": st.session_state.shop_name, "Phone": phone,
+                    "Image": drive_link, "Type": media_type
+                })
+                st.success(f"{name} added!")
+                if drive_link:
+                    show_media(drive_link)
+            else:
+                st.warning("Enter Product Name and Price")
+
+    if choice == "My Products":
+        st.header("My Products - Business Only")
+        if len(st.session_state.my_products) == 0:
+            st.write("You have not added any product yet.")
+        for p in st.session_state.my_products:
+            st.divider()
+            show_media(p.get("Image",""))
+            st.subheader(f"{p['Product']} - K{p['Price']}")
+            st.write(f"Shop: {p['Shop']} | Stock: {p['Stock']}")
+            rlist = st.session_state.ratings.get(str(p["Product"]), [])
+            if rlist:
+                st.write(f"Rating: {show_stars(sum(rlist)/len(rlist))} ({len(rlist)} ratings)")
+            else:
+                st.write("Rating: No ratings yet")
+
+    if choice == "View Market":
+        st.header("View Market - Business View")
+        for p in st.session_state.my_products:
+            st.divider()
+            show_media(p.get("Image",""))
+            st.subheader(f"{p['Product']} - K{p['Price']}")
+            st.write(f"Shop: {p['Shop']} | Stock: {p['Stock']}")
+            rlist = st.session_state.ratings.get(str(p["Product"]), [])
+            if rlist:
+                st.write(f"Rating: {show_stars(sum(rlist)/len(rlist))} ({len(rlist)} ratings)")
+        try:
+            df = pd.read_csv(SHEET_URL)
+            df.columns = [c.strip() for c in df.columns]
+            for idx, row in df.iterrows():
+                name2 = row.get("Product", "Product")
+                st.divider()
+                show_media(row.get("Image",""))
+                st.subheader(f"{name2} - K{row.get('Price','')}")
+                st.write(f"Shop: {row.get('Shop','')} | Stock: {row.get('Stock','')}")
+                rlist2 = st.session_state.ratings.get(str(name2), [])
+                if rlist2:
+                    st.write(f"Rating: {show_stars(sum(rlist2)/len(rlist2))} ({len(rlist2)} ratings)")
+                else:
+                    st.write("Rating: No ratings yet")
+        except:
+            st.error("Could not load Sheet.")
