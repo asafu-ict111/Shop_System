@@ -50,7 +50,7 @@ else:
         st.info("Ask Hamainza for this month's code. Do NOT share your code.")
         st.stop()
 
-st.success(f"Welcome! to your {shop} shop Management system!")
+st.success(f"Welcome!{shop}  Management system!")
 stock_df = load_stock()
 sales_df = load_sales()
 my_stock = stock_df[stock_df["Shop"] == shop] if not stock_df.empty else pd.DataFrame(columns=["Shop","Product","Price","Quantity"])
