@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd, re, urllib.parse
 
-SHEET_ID = st.secrets["1-Aigc_yDYS26ApGo1QrqmBbQVIgjLGOIMKObaq6IWDg"]
+SHEET_ID = st.secrets["SHEET_ID"]
 BASE = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet="
 def load(s):
     try: return pd.read_csv(BASE+s)
