@@ -226,9 +226,11 @@ if st.session_state.role == "businessman":
 
     if choice == "My Products":
         st.header("My Products - Business Only")
+        st.write("To delete, press 🗑️ Delete under the product you don't want.")
         if len(st.session_state.my_products) == 0:
             st.write("You have not added any product yet.")
-        for p in st.session_state.my_products:
+        # Use list copy with index so delete works
+        for idx, p in enumerate(list(st.session_state.my_products)):
             st.divider()
             st.subheader(f"{p['Product']} - K{p['Price']}")
             st.write(f"Shop: {p['Shop']} | Stock: {p['Stock']}")
@@ -239,6 +241,10 @@ if st.session_state.role == "businessman":
                 st.write(f"Rating: {show_stars(sum(rlist)/len(rlist))} ({len(rlist)} ratings)")
             else:
                 st.write("Rating: No ratings yet")
+            if st.button(f"🗑️ Delete {p['Product']}", key=f"del_{idx}_{p['Product']}"):
+                st.session_state.my_products.pop(idx)
+                st.success(f"Deleted {p['Product']}")
+                st.rerun()
 
     if choice == "View Market":
         st.header("View Market - Business View")
