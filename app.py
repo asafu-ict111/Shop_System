@@ -12,13 +12,9 @@ PAY_NAME = "Hamainza"
 PAY_AMOUNT = 15
 
 def expected_code(shop_number, year, month):
-    if year == 2026 and month == 12:
-        return f"SHOP-{shop_number * 12 + 6 + 7}"
-    if year == 2027 and month == 1:
-        return f"SHOP-{shop_number * 1 + 7 + 7}"
-    if year == 2026 and month == 11:
-        return "NOV-FREE"
-    return f"SHOP-{shop_number * 1 + 7 + 7}"
+    # FINAL FORMULA: (Year - 2020) x Shop Number + 22 - 8 + 7 - Month
+    value = (year - 2020) * shop_number + 22 - 8 + 7 - month
+    return f"SHOP-{value}"
 
 def drive_to_direct(link):
     if not link or str(link) == "nan":
@@ -84,12 +80,8 @@ if st.session_state.role == "businessman_check":
     st.title("💼 Businessman Access")
     now = datetime.now()
     month_name = now.strftime("%B %Y")
-    if now.year == 2026 and now.month == 11:
-        st.success("🎉 NOVEMBER PROMO - FREE THIS MONTH!")
-        st.info(f"1. Send K0 to {PAY_NUMBER} - {PAY_NAME}")
-    else:
-        st.info(f"1. Send **K{PAY_AMOUNT}** to **{PAY_NUMBER} - {PAY_NAME}**")
-        st.write(f"2. You will receive this month's code for {month_name}")
+    st.info(f"1. Send **K{PAY_AMOUNT}** to **{PAY_NUMBER} - {PAY_NAME}**")
+    st.write(f"2. You will receive this month's code for {month_name}")
     shop_num_input = st.number_input("What is your Shop Number?", min_value=1, value=1)
     code = st.text_input("Enter this month's code:")
     if st.button("✅ ENTER WITH CODE", use_container_width=True):
@@ -99,7 +91,7 @@ if st.session_state.role == "businessman_check":
             st.session_state.role = "shop_setup"
             st.rerun()
         else:
-            st.error("Wrong code. Pay K15 first, then enter code Hamainza sent you.")
+            st.error(f"Wrong code. For Shop {int(shop_num_input)} this month code is different. Pay K15 first, then enter code Hamainza sent you.")
     if st.button("⬅ Back"):
         st.session_state.role = None
         st.rerun()
@@ -132,7 +124,6 @@ if st.button("⬅ Change Login / Logout"):
     st.session_state.shop_name = None
     st.rerun()
 
-# ============ CUSTOMER ONLY ============
 if st.session_state.role == "customer":
     st.success("👤 Customer Mode - FREE Shopping")
     st.header("🛍️ Shop Now")
@@ -195,7 +186,6 @@ if st.session_state.role == "customer":
             st.rerun()
     st.stop()
 
-# ============ BUSINESSMAN ONLY ============
 if st.session_state.role == "businessman":
     st.success(f"💼 {st.session_state.shop_name} - Shop {st.session_state.shop_number} - Business Mode")
     if st.session_state.shop_whatsapp and str(st.session_state.shop_whatsapp).startswith("http"):
