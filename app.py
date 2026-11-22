@@ -33,13 +33,16 @@ def drive_to_direct(link):
     return link
 
 def show_media(link):
-    direct = drive_to_direct(link)
-    if not direct:
+    try:
+        direct = drive_to_direct(link)
+        if not direct or not str(direct).startswith("http"):
+            return
+        if any(x in str(direct).lower() for x in [".mp4", ".mov", ".webm", "video"]):
+            st.video(direct)
+        else:
+            st.image(direct, use_container_width=True)
+    except:
         return
-    if any(x in direct.lower() for x in [".mp4", ".mov", ".webm", "video"]):
-        st.video(direct)
-    else:
-        st.image(direct, use_container_width=True)
 
 def show_stars(avg):
     full = int(round(avg))
@@ -57,10 +60,6 @@ if "ratings" not in st.session_state:
     st.session_state.ratings = {}
 if "daily_book" not in st.session_state:
     st.session_state.daily_book = []
-if "shop_profile_pic" not in st.session_state:
-    st.session_state.shop_profile_pic = ""
-if "all_shop_pics" not in st.session_state:
-    st.session_state.all_shop_pics = {}  # shop_name -> pic link
 
 st.title("🛒 Online Shopping")
 st.subheader("Online Shop Management System")
@@ -102,25 +101,16 @@ if st.session_state.role == "businessman_check":
         st.rerun()
     st.stop()
 
-# --- SHOP MANAGER + PROFILE PICTURE ---
 if st.session_state.role == "shop_setup":
     st.title("🛒 Shop Manager System")
     st.write(f"Your Shop Number is: {st.session_state.shop_number}")
     shop_name = st.text_input("What is your Shop Name? e.g. Mary's Shop")
-    st.write("📸 Your Profile Picture / Shop Logo:")
-    st.caption("Go to Drive > Your photo > Share > Anyone with link > Copy link > Paste here")
-    profile_link = st.text_input("Paste Google Drive link for your Profile Picture here:")
-    if profile_link:
-        st.write("Preview:")
-        show_media(profile_link)
     if shop_name.strip() == "":
         st.info("Please enter your Shop Name above.")
     else:
         st.success(f"Welcome {shop_name} - Shop {st.session_state.shop_number}!")
         if st.button("✅ Enter My Shop", use_container_width=True):
             st.session_state.shop_name = shop_name
-            st.session_state.shop_profile_pic = profile_link
-            st.session_state.all_shop_pics[shop_name] = profile_link
             st.session_state.role = "businessman"
             st.rerun()
     if st.button("⬅ Back"):
@@ -157,15 +147,6 @@ if st.session_state.role == "customer":
     for p in all_products:
         pname = str(p["Product"])
         st.divider()
-        # Show Shop Profile Pic for this product if we have it
-        shop_pic = st.session_state.all_shop_pics.get(str(p["Shop"]), "")
-        if shop_pic:
-            c_pic, c_info = st.columns([1, 3])
-            with c_pic:
-                show_media(shop_pic)
-            with c_info:
-                st.write(f"Shop: **{p['Shop']}**")
-                st.write("✅ Verified Businessman")
         show_media(p.get("Image",""))
         st.subheader(f"{pname} - K{p['Price']}")
         st.write(f"Shop: {p['Shop']} | Stock: {p['Stock']}")
@@ -201,35 +182,8 @@ if st.session_state.role == "customer":
 
 # ============ BUSINESSMAN ONLY ============
 if st.session_state.role == "businessman":
-    # Show Profile Pic at top
-    if st.session_state.shop_profile_pic:
-        col_p, col_t = st.columns([1, 3])
-        with col_p:
-            show_media(st.session_state.shop_profile_pic)
-        with col_t:
-            st.success(f"💼 {st.session_state.shop_name} - Shop {st.session_state.shop_number}")
-            st.write("Business Mode - Your Profile Picture is showing")
-    else:
-        st.success(f"💼 {st.session_state.shop_name} - Shop {st.session_state.shop_number} - Business Mode")
-        st.caption("No profile picture yet - Go to My Profile to add one")
-
-    choice = st.selectbox("Choose:", ["View Market", "Add New Product", "My Products", "📓 Daily Business Routine", "📊 Monthly Review", "👤 My Profile"])
-
-    if choice == "👤 My Profile":
-        st.header("👤 My Profile - Change Profile Picture")
-        st.write(f"Shop: {st.session_state.shop_name} - Shop {st.session_state.shop_number}")
-        if st.session_state.shop_profile_pic:
-            st.write("Current Picture:")
-            show_media(st.session_state.shop_profile_pic)
-        new_pic = st.text_input("Paste NEW Google Drive link for Profile Picture:")
-        if new_pic:
-            st.write("Preview new picture:")
-            show_media(new_pic)
-        if st.button("💾 Save Profile Picture", use_container_width=True):
-            st.session_state.shop_profile_pic = new_pic
-            st.session_state.all_shop_pics[st.session_state.shop_name] = new_pic
-            st.success("Profile Picture saved!")
-            st.rerun()
+    st.success(f"💼 {st.session_state.shop_name} - Shop {st.session_state.shop_number} - Business Mode")
+    choice = st.selectbox("Choose:", ["View Market", "Add New Product", "My Products", "📓 Daily Business Routine", "📊 Monthly Review"])
 
     if choice == "Add New Product":
         st.header("Add New Product")
@@ -238,6 +192,7 @@ if st.session_state.role == "businessman":
         stock = st.number_input("How many in stock?", min_value=0, value=0)
         phone = st.text_input("Phone (e.g 260770000000):")
         st.write("📸🎥 Paste Drive link for Photo or Video:")
+        st.caption("Drive > Photo/Video > Share > Anyone with link > Copy link > Paste here")
         drive_link = st.text_input("Paste Google Drive link for Photo or Video here:")
         media_type = st.selectbox("Is this a Photo or Video?", ["Photo", "Video"])
         if st.button("Add Product"):
